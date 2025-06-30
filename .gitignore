@@ -1,0 +1,54 @@
+# Build results
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code settings
+.vscode/
+
+# NuGet packages
+*.nupkg
+packages/
+*.snupkg
+
+# Build logs
+*.log
+
+# Resharper
+*.ReSharper*/
+*_ReSharper*/
+*.DotSettings.user
+
+# Rider
+.idea/
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Publish
+publish/
+*.publish.xml
+
+# Others
+*.dbmdl
+*.pdb
+*.cache
+*.mdb
+*.svclog
+*.pidb
+*.scc
+*.orig
+
+# Temporary files
+~$*
+*.tmp
+*.temp
