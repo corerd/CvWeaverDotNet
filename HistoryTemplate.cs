@@ -39,25 +39,36 @@ public static class HistoryEntryTemplateMap
 
 public static class HistoryTemplate
 {
-    public static void ReplaceHistory(string filePath, List<HistoryEntry> historyItems)
+    public static void ReplaceHistory(string docFilePath, List<HistoryEntry> historyItems)
     {
         //string tblCellMatchText = "{{tbl_history_year}}";
         // Get the table name for Year property
         HistoryEntryTemplateMap.PropertyToTable.TryGetValue(nameof(HistoryEntry.Year), out string? tblCellMatchText);
 
-        using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(filePath, true))
+        using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(docFilePath, true))
         {
+            if (wordDoc.MainDocumentPart == null || wordDoc.MainDocumentPart.Document == null)
+            {
+                Console.WriteLine($"The document does not contain a main document part or document.");
+                return;
+            }
+
             var body = wordDoc.MainDocumentPart.Document.Body;
+            if (body == null)
+            {
+                Console.WriteLine("The document body is null.");
+                return;
+            }
 
             // Find the original table by matching the content of cell (0,0)
-            Table templateTable = null;
+            Table? templateTable = null;
             foreach (var table in body.Elements<Table>())
             {
                 var firstRow = table.Elements<TableRow>().FirstOrDefault();
                 var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
                 var cellText = firstCell?.InnerText;
 
-                if (!string.IsNullOrEmpty(cellText) && cellText.Contains(tblCellMatchText))
+                if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
                 {
                     templateTable = table;
                     break;
@@ -72,6 +83,11 @@ public static class HistoryTemplate
 
             // Capture index of original table in its parent
             var parent = templateTable.Parent;
+            if (parent == null)
+            {
+                Console.WriteLine("The template table's parent is null.");
+                return;
+            }
             int index = parent.ChildElements.ToList().IndexOf(templateTable);
 
             // Remove original table from the document

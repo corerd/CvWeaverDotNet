@@ -4,9 +4,9 @@ using System.Text.RegularExpressions;
 
 public class HistoryEntry
 {
-    public int Year { get; set; }
-    public string Fields { get; set; }
-    public string Activities { get; set; }
+    public string? Year { get; set; }
+    public string? Fields { get; set; }
+    public string? Activities { get; set; }
 }
 
 public class DataCollection
@@ -25,14 +25,15 @@ public class DataCollection
     ///   activities: >-
     ///     This is a Multiline activity description following the YAML >- block scalar indicator.
     /// </summary>
-    /// <param name="path">The path to the file containing the history entries.</param>
+    /// <param name="yamlFilePath">The path to the file containing the history entries.</param>
     /// <returns>A list of <see cref="HistoryEntry"/> objects parsed from the file.</returns>
-    public static List<HistoryEntry> ReadHistoryEntries(string path)
+    public static List<HistoryEntry> ReadHistoryEntries(string yamlFilePath)
     {
         var entries = new List<HistoryEntry>();
-        HistoryEntry current = null;
-        foreach (var line in File.ReadLines(path))
+        HistoryEntry? current = null;
+        foreach (var line in File.ReadLines(yamlFilePath))
         {
+            // Parse the YAML file 
             var trimmed = line.Trim();
             if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("#"))
                 continue;
@@ -42,9 +43,9 @@ public class DataCollection
                 if (current != null)
                     entries.Add(current);
                 current = new HistoryEntry();
-                var yearMatch = Regex.Match(trimmed, @"- year:\s*(\d+)");
+                var yearMatch = Regex.Match(trimmed, @"- year:\s*(\w+)");
                 if (yearMatch.Success)
-                    current.Year = int.Parse(yearMatch.Groups[1].Value);
+                    current.Year = yearMatch.Groups[1].Value;
             }
             else if (trimmed.StartsWith("fields:"))
             {
@@ -56,14 +57,16 @@ public class DataCollection
                     var fieldsArray = fieldsRaw.Split(',');
                     for (int i = 0; i < fieldsArray.Length; i++)
                         fieldsArray[i] = fieldsArray[i].Trim();
-                    current.Fields = string.Join(", ", fieldsArray);
+                    if (current != null)
+                        current.Fields = string.Join(", ", fieldsArray);
                 }
             }
             else if (trimmed.StartsWith("activities:"))
             {
                 // Remove ">-" if present
                 var actLine = trimmed.Replace("activities:", "").Replace(">-", "").Trim();
-                current.Activities = actLine;
+                if (current != null)
+                    current.Activities = actLine;
             }
             else if (current != null && !trimmed.StartsWith("- year:") && !trimmed.StartsWith("fields:") && !trimmed.StartsWith("activities:"))
             {
