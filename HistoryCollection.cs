@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 
 public class HistoryEntry
@@ -34,135 +32,115 @@ public static class HistoryEntryTemplateMap
 
 public class HistoryCollection
 {
-    public static void ReplaceHistoryTemplate(string docFilePath, List<HistoryEntry> historyItems)
+    public static void ReplaceHistoryTemplate(Body docxBody, List<HistoryEntry> historyItems)
     {
         //string tblCellMatchText = "{{tbl_history_year}}";
         // Get the table name for Year property
         HistoryEntryTemplateMap.PropertyToTable.TryGetValue(nameof(HistoryEntry.Year), out string? tblCellMatchText);
 
-        using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(docFilePath, true))
+        // Find the original table by matching the content of cell (0,0)
+        Table? templateTable = null;
+        foreach (var table in docxBody.Elements<Table>())
         {
-            if (wordDoc.MainDocumentPart == null || wordDoc.MainDocumentPart.Document == null)
+            var firstRow = table.Elements<TableRow>().FirstOrDefault();
+            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
+            var cellText = firstCell?.InnerText;
+
+            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
             {
-                Console.WriteLine($"The document does not contain a main document part or document.");
-                return;
+                templateTable = table;
+                break;
             }
+        }
 
-            var body = wordDoc.MainDocumentPart.Document.Body;
-            if (body == null)
+        if (templateTable == null)
+        {
+            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+            return;
+        }
+
+        // Capture index of original table in its parent
+        var parent = templateTable.Parent;
+        if (parent == null)
+        {
+            Console.WriteLine("The template table's parent is null.");
+            return;
+        }
+        int index = parent.ChildElements.ToList().IndexOf(templateTable);
+
+        // Remove original table from the document
+        templateTable.Remove();
+
+        var tablesToInsert = new List<Table>();
+
+        foreach (var item in historyItems)
+        {
+            // Clone the template table
+            var newTable = (Table)templateTable.CloneNode(true);
+
+            // Replace template placeholders in the cloned table
+            foreach (var row in newTable.Elements<TableRow>())
             {
-                Console.WriteLine("The document body is null.");
-                return;
-            }
-
-            // Find the original table by matching the content of cell (0,0)
-            Table? templateTable = null;
-            foreach (var table in body.Elements<Table>())
-            {
-                var firstRow = table.Elements<TableRow>().FirstOrDefault();
-                var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
-                var cellText = firstCell?.InnerText;
-
-                if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
+                foreach (var cell in row.Elements<TableCell>())
                 {
-                    templateTable = table;
-                    break;
-                }
-            }
+                    // Gather all Text elements in this cell
+                    var textElements = cell.Descendants<Text>().ToList();
+                    if (textElements.Count < 3) continue;
 
-            if (templateTable == null)
-            {
-                Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
-                return;
-            }
-
-            // Capture index of original table in its parent
-            var parent = templateTable.Parent;
-            if (parent == null)
-            {
-                Console.WriteLine("The template table's parent is null.");
-                return;
-            }
-            int index = parent.ChildElements.ToList().IndexOf(templateTable);
-
-            // Remove original table from the document
-            templateTable.Remove();
-
-            var tablesToInsert = new List<Table>();
-
-            foreach (var item in historyItems)
-            {
-                // Clone the template table
-                var newTable = (Table)templateTable.CloneNode(true);
-
-                // Replace template placeholders in the cloned table
-                foreach (var row in newTable.Elements<TableRow>())
-                {
-                    foreach (var cell in row.Elements<TableCell>())
+                    // Look for the pattern: "*{{", someString, "}}"
+                    for (int i = 0; i < textElements.Count - 2; i++)
                     {
-                        // Gather all Text elements in this cell
-                        var textElements = cell.Descendants<Text>().ToList();
-                        if (textElements.Count < 3) continue;
-
-                        // Look for the pattern: "*{{", someString, "}}"
-                        for (int i = 0; i < textElements.Count - 2; i++)
+                        string textStart = textElements[i].Text;
+                        bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
+                        if (isStart && textElements[i + 2].Text == "}}")
                         {
-                            string textStart = textElements[i].Text;
-                            bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
-                            if (isStart && textElements[i + 2].Text == "}}")
+                            string placeholder = "{{" + textElements[i + 1].Text + "}}";
+                            if (HistoryEntryTemplateMap.TableToProperty.TryGetValue(placeholder, out string? propertyName))
                             {
-                                string placeholder = "{{" + textElements[i + 1].Text + "}}";
-                                if (HistoryEntryTemplateMap.TableToProperty.TryGetValue(placeholder, out string? propertyName))
+                                var property = typeof(HistoryEntry).GetProperty(propertyName);
+                                if (property != null)
                                 {
-                                    var property = typeof(HistoryEntry).GetProperty(propertyName);
-                                    if (property != null)
+                                    string propertyValueString = "";
+                                    if (property.PropertyType == typeof(List<string>))
                                     {
-                                        string propertyValueString = "";
-                                        if (property.PropertyType == typeof(List<string>))
-                                        {
-                                            List<string>? fieldsList = property.GetValue(item) as List<string>;
-                                            propertyValueString = string.Join(", ", fieldsList ?? new List<string>());
-                                        }
-                                        else
-                                        {
-                                            propertyValueString = property.GetValue(item)?.ToString() ?? "";
-                                        }
-                                        // Replace the three tokens with the value, preserving formatting
-                                        // textElements[i].Text is "*{{", then remove the last two characters
-                                        textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
-                                        textElements[i + 1].Text = propertyValueString;
-                                        // Assign "" to the last two characters of textElements[i + 2].Text
-                                        textElements[i + 2].Text = "";
+                                        List<string>? fieldsList = property.GetValue(item) as List<string>;
+                                        propertyValueString = string.Join(", ", fieldsList ?? new List<string>());
                                     }
+                                    else
+                                    {
+                                        propertyValueString = property.GetValue(item)?.ToString() ?? "";
+                                    }
+                                    // Replace the three tokens with the value, preserving formatting
+                                    // textElements[i].Text is "*{{", then remove the last two characters
+                                    textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
+                                    textElements[i + 1].Text = propertyValueString;
+                                    // Assign "" to the last two characters of textElements[i + 2].Text
+                                    textElements[i + 2].Text = "";
                                 }
                             }
                         }
                     }
                 }
-
-                tablesToInsert.Add(newTable);
             }
 
-            // Insert all new tables at the original index
-            int insertIndex = index;
-            foreach (var tbl in tablesToInsert)
-            {
-                parent.InsertAt(tbl, insertIndex++);
-                // Optionally add a blank paragraph between tables
-                var emptyParagraph = new Paragraph(new Run(new Text("")));
-                parent.InsertAt(emptyParagraph, insertIndex++);
-            }
+            tablesToInsert.Add(newTable);
+        }
 
-            // Save both the document and its main part
-            wordDoc.MainDocumentPart.Document.Save();
-            wordDoc.Save();
+        // Insert all new tables at the original index
+        int insertIndex = index;
+        foreach (var tbl in tablesToInsert)
+        {
+            parent.InsertAt(tbl, insertIndex++);
+            // Optionally add a blank paragraph between tables
+            var emptyParagraph = new Paragraph(new Run(new Text("")));
+            parent.InsertAt(emptyParagraph, insertIndex++);
         }
     }
 
-    public static void MergeHistoryData(string docFilePath, string dataSetFilePath)
+    public static void MergeHistoryData(Body docxBody, string dataSetFilePath)
     {
-        List<HistoryEntry> historyItems = DataCollection.DeserializeYAML<HistoryEntry>(DataStore.HistoryPath);
-        ReplaceHistoryTemplate(docFilePath, historyItems);
+        List<HistoryEntry> historyItems = DataCollection.DeserializeYAML<HistoryEntry>(dataSetFilePath);
+        ReplaceHistoryTemplate(docxBody, historyItems);
     }
 }
 

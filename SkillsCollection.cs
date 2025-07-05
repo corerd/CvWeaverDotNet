@@ -2,6 +2,35 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 
+public class ApplicationFieldEntry
+{
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public string? Desc { get; set; }
+}
+
+public static class ApplicationFieldEntryPlaceholderMap
+{
+    public const string PlaceholderApplicationField = "{{tplAppField}}";
+    public const string PlaceholderDescription = "{{tplAppFieldList}}";
+
+    // Maps property names of ApplicationFieldEntry to their corresponding placeholders in the Word table
+    public static readonly Dictionary<string, string> PropertyToTable = new Dictionary<string, string>
+    {
+        { nameof(ApplicationFieldEntry.Desc), PlaceholderDescription }
+    };
+
+    // Maps placeholders back to property names of ApplicationFieldEntry
+    public static readonly Dictionary<string, string> TableToProperty = new Dictionary<string, string>
+    {
+        { PlaceholderDescription, nameof(ApplicationFieldEntry.Desc) }
+    };
+
+    // The PlaceholderApplicationField placeholder is unique.
+    // It is replaced with a fixed substitute string.
+    public const string PlaceholderApplicationFieldSubstitute = "Application fields";
+}
+
 public class TechAptitudeEntry
 {
     public string? Skill { get; set; }
@@ -35,131 +64,111 @@ public static class TechAptitudeEntryPlaceholderMap
 
 public class SkillsCollection
 {
-    public static void ReplaceTechAptitudeTemplate(string docFilePath, List<TechAptitudeEntry> TechAptitudeItems)
+    public static void ReplaceTechAptitudeTemplate(Body docxBody, List<TechAptitudeEntry> TechAptitudeItems)
     {
         const string tblCellMatchText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitude;
 
-        using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(docFilePath, true))
+        // Find the original table by matching the content of cell (0,0)
+        Table? templateTable = null;
+        foreach (var table in docxBody.Elements<Table>())
         {
-            if (wordDoc.MainDocumentPart == null || wordDoc.MainDocumentPart.Document == null)
+            var firstRow = table.Elements<TableRow>().FirstOrDefault();
+            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
+            var cellText = firstCell?.InnerText;
+
+            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
             {
-                Console.WriteLine($"The document does not contain a main document part or document.");
-                return;
+                templateTable = table;
+                break;
             }
+        }
 
-            var body = wordDoc.MainDocumentPart.Document.Body;
-            if (body == null)
+        if (templateTable == null)
+        {
+            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+            return;
+        }
+
+        // Capture index of original table in its parent
+        var parent = templateTable.Parent;
+        if (parent == null)
+        {
+            Console.WriteLine("The template table's parent is null.");
+            return;
+        }
+        int index = parent.ChildElements.ToList().IndexOf(templateTable);
+
+        // Remove original table from the document
+        templateTable.Remove();
+
+        var tablesToInsert = new List<Table>();
+
+        bool isFirstTable = true;
+        foreach (var item in TechAptitudeItems)
+        {
+            // Clone the template table
+            var newTable = (Table)templateTable.CloneNode(true);
+
+            // Replace template placeholders in the cloned table
+            foreach (var row in newTable.Elements<TableRow>())
             {
-                Console.WriteLine("The document body is null.");
-                return;
-            }
-
-            // Find the original table by matching the content of cell (0,0)
-            Table? templateTable = null;
-            foreach (var table in body.Elements<Table>())
-            {
-                var firstRow = table.Elements<TableRow>().FirstOrDefault();
-                var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
-                var cellText = firstCell?.InnerText;
-
-                if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
+                foreach (var cell in row.Elements<TableCell>())
                 {
-                    templateTable = table;
-                    break;
-                }
-            }
+                    // Gather all Text elements in this cell
+                    var textElements = cell.Descendants<Text>().ToList();
+                    // var cellText = string.Concat(textElements.Select(t => t.Text));
+                    if (textElements.Count < 3) continue;
 
-            if (templateTable == null)
-            {
-                Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
-                return;
-            }
-
-            // Capture index of original table in its parent
-            var parent = templateTable.Parent;
-            if (parent == null)
-            {
-                Console.WriteLine("The template table's parent is null.");
-                return;
-            }
-            int index = parent.ChildElements.ToList().IndexOf(templateTable);
-
-            // Remove original table from the document
-            templateTable.Remove();
-
-            var tablesToInsert = new List<Table>();
-
-            bool isFirstTable = true;
-            foreach (var item in TechAptitudeItems)
-            {
-                // Clone the template table
-                var newTable = (Table)templateTable.CloneNode(true);
-
-                // Replace template placeholders in the cloned table
-                foreach (var row in newTable.Elements<TableRow>())
-                {
-                    foreach (var cell in row.Elements<TableCell>())
+                    // Look for the pattern: "*{{", someString, "}}"
+                    for (int i = 0; i < textElements.Count - 2; i++)
                     {
-                        // Gather all Text elements in this cell
-                        var textElements = cell.Descendants<Text>().ToList();
-                        // var cellText = string.Concat(textElements.Select(t => t.Text));
-                        if (textElements.Count < 3) continue;
-
-                        // Look for the pattern: "*{{", someString, "}}"
-                        for (int i = 0; i < textElements.Count - 2; i++)
+                        string textStart = textElements[i].Text;
+                        bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
+                        if (isStart && textElements[i + 2].Text == "}}")
                         {
-                            string textStart = textElements[i].Text;
-                            bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
-                            if (isStart && textElements[i + 2].Text == "}}")
+                            string placeholder = "{{" + textElements[i + 1].Text + "}}";
+                            string replaceText = "";
+                            if (placeholder == tblCellMatchText)
                             {
-                                string placeholder = "{{" + textElements[i + 1].Text + "}}";
-                                string replaceText = "";
-                                if (placeholder == tblCellMatchText)
-                                {
-                                    // tblCellMatchText placeholder is special
-                                    // Only replace it with some string in the first table
-                                    // leaving it empty subsequently
-                                    if (isFirstTable)
-                                        replaceText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitudeSubstitute;
-                                }
-                                else
-                                {
-                                    // Map the placeholder to the property name and get its value
-                                    if (TechAptitudeEntryPlaceholderMap.TableToProperty.TryGetValue(placeholder, out string? propertyName))
-                                    {
-                                        var property = typeof(TechAptitudeEntry).GetProperty(propertyName);
-                                        if (property != null)
-                                            replaceText = property.GetValue(item)?.ToString() ?? "";
-                                    }
-                                }
-                                // Replace the three tokens with the replaceText, preserving formatting
-                                // textElements[i].Text is "*{{", then remove the last two characters
-                                textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
-                                textElements[i + 1].Text = replaceText;
-                                // Assign "" to the last two characters of textElements[i + 2].Text
-                                textElements[i + 2].Text = "";
+                                // tblCellMatchText placeholder is special
+                                // Only replace it with some string in the first table
+                                // leaving it empty subsequently
+                                if (isFirstTable)
+                                    replaceText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitudeSubstitute;
                             }
+                            else
+                            {
+                                // Map the placeholder to the property name and get its value
+                                if (TechAptitudeEntryPlaceholderMap.TableToProperty.TryGetValue(placeholder, out string? propertyName))
+                                {
+                                    var property = typeof(TechAptitudeEntry).GetProperty(propertyName);
+                                    if (property != null)
+                                        replaceText = property.GetValue(item)?.ToString() ?? "";
+                                }
+                            }
+                            // Replace the three tokens with the replaceText, preserving formatting
+                            // textElements[i].Text is "*{{", then remove the last two characters
+                            textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
+                            textElements[i + 1].Text = replaceText;
+                            // Assign "" to the last two characters of textElements[i + 2].Text
+                            textElements[i + 2].Text = "";
                         }
                     }
                 }
-                isFirstTable = false;
-                tablesToInsert.Add(newTable);
             }
-
-            // Insert all new tables at the original index
-            int insertIndex = index;
-            foreach (var tbl in tablesToInsert)
-                parent.InsertAt(tbl, insertIndex++);
-
-            // Save both the document and its main part
-            wordDoc.MainDocumentPart.Document.Save();
-            wordDoc.Save();
+            isFirstTable = false;
+            tablesToInsert.Add(newTable);
         }
+
+        // Insert all new tables at the original index
+        int insertIndex = index;
+        foreach (var tbl in tablesToInsert)
+            parent.InsertAt(tbl, insertIndex++);
     }
 
-    public static void MergeTechAptitudeData(string docFilePath, string dataSetFilePath)
+    public static void MergeTechAptitudeData(Body docxBody, string dataSetFilePath)
     {
-        List<TechAptitudeEntry> techAptitudeItems = DataCollection.DeserializeYAML<TechAptitudeEntry>(DataStore.SkillDevPath);
-        ReplaceTechAptitudeTemplate(docFilePath, techAptitudeItems);
-   }
+        List<TechAptitudeEntry> techAptitudeItems = DataCollection.DeserializeYAML<TechAptitudeEntry>(dataSetFilePath);
+        ReplaceTechAptitudeTemplate(docxBody, techAptitudeItems);
+    }
 }
