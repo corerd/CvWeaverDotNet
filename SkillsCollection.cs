@@ -5,7 +5,7 @@ using DocumentFormat.OpenXml.Wordprocessing;
 public class TechAptitudeEntry
 {
     public string? Skill { get; set; }
-    public string? Description { get; set; }
+    public string? Desc { get; set; }
 }
 
 public static class TechAptitudeEntryPlaceholderMap
@@ -18,14 +18,14 @@ public static class TechAptitudeEntryPlaceholderMap
     public static readonly Dictionary<string, string> PropertyToTable = new Dictionary<string, string>
     {
         { nameof(TechAptitudeEntry.Skill), PlaceholderAptitude },
-        { nameof(TechAptitudeEntry.Description), PlaceholderDescription }
+        { nameof(TechAptitudeEntry.Desc), PlaceholderDescription }
     };
 
     // Maps placeholders back to property names of TechAptitudeEntry
     public static readonly Dictionary<string, string> TableToProperty = new Dictionary<string, string>
     {
         { PlaceholderAptitude, nameof(TechAptitudeEntry.Skill) },
-        { PlaceholderDescription, nameof(TechAptitudeEntry.Description) }
+        { PlaceholderDescription, nameof(TechAptitudeEntry.Desc) }
     };
 
     // The PlaceholderTechAptitude placeholder is unique.
@@ -35,46 +35,7 @@ public static class TechAptitudeEntryPlaceholderMap
 
 public class SkillsCollection
 {
-    public static List<TechAptitudeEntry> DeserializeTechAptitude(string yamlFilePath)
-    {
-        var entries = new List<TechAptitudeEntry>();
-        TechAptitudeEntry? current = null;
-        foreach (var line in File.ReadLines(yamlFilePath))
-        {
-            var trimmed = line.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("#"))
-                continue;
-
-            if (trimmed.StartsWith("- skill:"))
-            {
-                if (current != null)
-                    entries.Add(current);
-                current = new TechAptitudeEntry();
-                var skillMatch = Regex.Match(trimmed, @"- skill:\s*(.+)$");
-                if (skillMatch.Success)
-                    current.Skill = skillMatch.Groups[1].Value;
-            }
-            else if (trimmed.StartsWith("desc:"))
-            {
-                // Remove ">-" if present
-                var descLine = trimmed.Replace("desc:", "").Replace(">-", "").Trim();
-                if (current != null)
-                    current.Description = descLine;
-            }
-            else if (current != null && !trimmed.StartsWith("- skill:") && !trimmed.StartsWith("desc:"))
-            {
-                // Multiline activities
-                if (!string.IsNullOrEmpty(current.Description))
-                    current.Description += " ";
-                current.Description += trimmed;
-            }
-        }
-        if (current != null)
-            entries.Add(current);
-        return entries;
-    }
-
-    public static void ReplaceTechAptitude(string docFilePath, List<TechAptitudeEntry> TechAptitudeItems)
+    public static void ReplaceTechAptitudeTemplate(string docFilePath, List<TechAptitudeEntry> TechAptitudeItems)
     {
         const string tblCellMatchText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitude;
 
@@ -195,4 +156,10 @@ public class SkillsCollection
             wordDoc.Save();
         }
     }
+
+    public static void MergeTechAptitudeData(string docFilePath, string dataSetFilePath)
+    {
+        List<TechAptitudeEntry> techAptitudeItems = DataCollection.DeserializeYAML<TechAptitudeEntry>(DataStore.SkillDevPath);
+        ReplaceTechAptitudeTemplate(docFilePath, techAptitudeItems);
+   }
 }

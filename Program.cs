@@ -14,12 +14,10 @@
         File.Copy(initialDocName, outputDocName, true);
 
         Console.WriteLine($"Merge '{DataStore.SkillDevPath}'");
-        List<TechAptitudeEntry> TechAptitudeItems = SkillsCollection.DeserializeTechAptitude(DataStore.SkillDevPath);
-        SkillsCollection.ReplaceTechAptitude(outputDocName, TechAptitudeItems);
+        SkillsCollection.MergeTechAptitudeData(outputDocName, DataStore.SkillDevPath);
 
         Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
-        List<HistoryEntry> historyItems = HistoryCollection.Deserialize(DataStore.HistoryPath);
-        HistoryCollection.ReplaceHistory(outputDocName, historyItems);
+        HistoryCollection.MergeHistoryData(outputDocName, DataStore.HistoryPath);
 
         Console.WriteLine($"Output '{outputDocName}'");
         Console.WriteLine("Done!");

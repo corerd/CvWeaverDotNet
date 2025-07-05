@@ -5,7 +5,7 @@ using DocumentFormat.OpenXml.Wordprocessing;
 public class HistoryEntry
 {
     public string? Year { get; set; }
-    public string? Fields { get; set; }
+    public List<string>? Fields { get; set; }
     public string? Activities { get; set; }
 }
 
@@ -34,77 +34,7 @@ public static class HistoryEntryTemplateMap
 
 public class HistoryCollection
 {
-    /// <summary>
-    /// Reads history entries from a specified file path and parses them into a list of <see cref="HistoryEntry"/> objects.
-    /// The file is expected to have entries in a specific format, where each entry starts with "- year:",
-    /// followed by optional "fields:" and "activities:" lines.
-    /// Lines starting with "#" (comment) or empty lines are ignored.
-    /// Multiline "activities" are supported by means of the YAML >- block scalar indicator.
-    /// Example:
-    /// # This is a comment line
-    ///      <this is an empty line>
-    /// - year: XYWZ
-    ///   fields: [item_1, ..., item_n]
-    ///   activities: >-
-    ///     This is a Multiline activity description following the YAML >- block scalar indicator.
-    /// </summary>
-    /// <param name="yamlFilePath">The path to the file containing the history entries.</param>
-    /// <returns>A list of <see cref="HistoryEntry"/> objects parsed from the file.</returns>
-    public static List<HistoryEntry> Deserialize(string yamlFilePath)
-    {
-        var entries = new List<HistoryEntry>();
-        HistoryEntry? current = null;
-        foreach (var line in File.ReadLines(yamlFilePath))
-        {
-            // Parse the YAML file 
-            var trimmed = line.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("#"))
-                continue;
-
-            if (trimmed.StartsWith("- year:"))
-            {
-                if (current != null)
-                    entries.Add(current);
-                current = new HistoryEntry();
-                var yearMatch = Regex.Match(trimmed, @"- year:\s*(\w+)");
-                if (yearMatch.Success)
-                    current.Year = yearMatch.Groups[1].Value;
-            }
-            else if (trimmed.StartsWith("fields:"))
-            {
-                var fieldsMatch = Regex.Match(trimmed, @"fields:\s*\[(.*?)\]");
-                if (fieldsMatch.Success)
-                {
-                    // Remove spaces after commas and trim each item
-                    var fieldsRaw = fieldsMatch.Groups[1].Value;
-                    var fieldsArray = fieldsRaw.Split(',');
-                    for (int i = 0; i < fieldsArray.Length; i++)
-                        fieldsArray[i] = fieldsArray[i].Trim();
-                    if (current != null)
-                        current.Fields = string.Join(", ", fieldsArray);
-                }
-            }
-            else if (trimmed.StartsWith("activities:"))
-            {
-                // Remove ">-" if present
-                var actLine = trimmed.Replace("activities:", "").Replace(">-", "").Trim();
-                if (current != null)
-                    current.Activities = actLine;
-            }
-            else if (current != null && !trimmed.StartsWith("- year:") && !trimmed.StartsWith("fields:") && !trimmed.StartsWith("activities:"))
-            {
-                // Multiline activities
-                if (!string.IsNullOrEmpty(current.Activities))
-                    current.Activities += " ";
-                current.Activities += trimmed;
-            }
-        }
-        if (current != null)
-            entries.Add(current);
-        return entries;
-    }
-
-    public static void ReplaceHistory(string docFilePath, List<HistoryEntry> historyItems)
+    public static void ReplaceHistoryTemplate(string docFilePath, List<HistoryEntry> historyItems)
     {
         //string tblCellMatchText = "{{tbl_history_year}}";
         // Get the table name for Year property
@@ -187,11 +117,21 @@ public class HistoryCollection
                                     var property = typeof(HistoryEntry).GetProperty(propertyName);
                                     if (property != null)
                                     {
+                                        string propertyValueString = "";
+                                        if (property.PropertyType == typeof(List<string>))
+                                        {
+                                            List<string>? fieldsList = property.GetValue(item) as List<string>;
+                                            propertyValueString = string.Join(", ", fieldsList ?? new List<string>());
+                                        }
+                                        else
+                                        {
+                                            propertyValueString = property.GetValue(item)?.ToString() ?? "";
+                                        }
                                         // Replace the three tokens with the value, preserving formatting
-                                        var value = property.GetValue(item)?.ToString() ?? "";
-                                        // Assign "" to the last two characters of textElements[i].Text
+                                        // textElements[i].Text is "*{{", then remove the last two characters
                                         textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
-                                        textElements[i + 1].Text = value;
+                                        textElements[i + 1].Text = propertyValueString;
+                                        // Assign "" to the last two characters of textElements[i + 2].Text
                                         textElements[i + 2].Text = "";
                                     }
                                 }
@@ -213,21 +153,16 @@ public class HistoryCollection
                 parent.InsertAt(emptyParagraph, insertIndex++);
             }
 
-/*
-            // Clone templateTable
-            Table newTableContent = templateTable;
-
-            // Insert the new table at the same index
-            parent.InsertAt(newTableContent, index);
-
-            index = AppendTable(index, parent, newTableContent);
-            index = AppendTable(index, parent, newTableContent);
-*/
-
             // Save both the document and its main part
             wordDoc.MainDocumentPart.Document.Save();
             wordDoc.Save();
         }
+    }
+
+    public static void MergeHistoryData(string docFilePath, string dataSetFilePath)
+    {
+        List<HistoryEntry> historyItems = DataCollection.DeserializeYAML<HistoryEntry>(DataStore.HistoryPath);
+        ReplaceHistoryTemplate(docFilePath, historyItems);
     }
 }
 
