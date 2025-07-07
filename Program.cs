@@ -2,7 +2,7 @@
 using DocumentFormat.OpenXml.Wordprocessing;
 
 public class CvWeaverDotNet
-{   
+{
     public static void Main(string[] args)
     {
         string initialDocName = DataStore.DocTemplatePath;
@@ -34,10 +34,13 @@ public class CvWeaverDotNet
                 return;
             }
 
-        Console.WriteLine($"Merge '{DataStore.SkillDevPath}'");
+            Console.WriteLine($"Merge '{DataStore.ApplicationFieldPath}'");
+            SkillsCollection.MergeApplicationFieldData(body, DataStore.ApplicationFieldPath);
+
+            Console.WriteLine($"Merge '{DataStore.SkillDevPath}'");
             SkillsCollection.MergeTechAptitudeData(body, DataStore.SkillDevPath);
 
-        Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
+            Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
             HistoryCollection.MergeHistoryData(body, DataStore.HistoryPath);
 
             // Save both the document and its main part

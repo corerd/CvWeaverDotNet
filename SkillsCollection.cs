@@ -1,5 +1,6 @@
+using System.Text;
 using System.Text.RegularExpressions;
-using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
 
 public class ApplicationFieldEntry
@@ -23,12 +24,9 @@ public static class ApplicationFieldEntryPlaceholderMap
     // Maps placeholders back to property names of ApplicationFieldEntry
     public static readonly Dictionary<string, string> TableToProperty = new Dictionary<string, string>
     {
+        { PlaceholderApplicationField, "Application fields" },  // fixed string
         { PlaceholderDescription, nameof(ApplicationFieldEntry.Desc) }
     };
-
-    // The PlaceholderApplicationField placeholder is unique.
-    // It is replaced with a fixed substitute string.
-    public const string PlaceholderApplicationFieldSubstitute = "Application fields";
 }
 
 public class TechAptitudeEntry
@@ -64,6 +62,106 @@ public static class TechAptitudeEntryPlaceholderMap
 
 public class SkillsCollection
 {
+    public static void ReplaceApplicationFieldTemplate(Body docxBody, List<ApplicationFieldEntry> ApplicationFieldItems)
+    {
+        const string tblCellMatchText = ApplicationFieldEntryPlaceholderMap.PlaceholderApplicationField;
+
+        // Find the original table by matching the content of cell (0,0)
+        Table? templateTable = null;
+        foreach (var table in docxBody.Elements<Table>())
+        {
+            var firstRow = table.Elements<TableRow>().FirstOrDefault();
+            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
+            var cellText = firstCell?.InnerText;
+
+            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
+            {
+                templateTable = table;
+                break;
+            }
+        }
+
+        if (templateTable == null)
+        {
+            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+            return;
+        }
+
+        // Capture index of original table in its parent
+        var parent = templateTable.Parent;
+        if (parent == null)
+        {
+            Console.WriteLine("The template table's parent is null.");
+            return;
+        }
+        int index = parent.ChildElements.ToList().IndexOf(templateTable);
+
+        // Remove original table from the document
+        templateTable.Remove();
+
+        // Clone the template table
+        // which should be a single row, two-column table
+        var newTable = (Table)templateTable.CloneNode(true);
+
+        // Assuming newTable is a single-row table, get the first (and only) row
+        TableRow? templateRow = newTable.Elements<TableRow>().FirstOrDefault();
+        if (templateRow == null)
+        {
+            Console.WriteLine("Cloned table does not contain a row.");
+            return;
+        }
+
+        // Get the cells (TableCell) within that row
+        var cells = templateRow.Elements<TableCell>().ToList();
+        if (cells.Count < 2)
+        {
+            // It is not a two-column table as expected
+            Console.WriteLine("Cloned table does not have at least two columns.");
+            return;
+        }
+
+        // Get and clone the first paragraph of cells[1]
+        Paragraph[] cellParagraphs = cells[1].Elements<Paragraph>().ToArray();
+        if (cellParagraphs.Length < 1)
+        {
+            Console.WriteLine("Cloned table cell does not have at least one paragraph.");
+            return;
+        }
+        Paragraph templateParagraph = (Paragraph)cellParagraphs[0].CloneNode(true);
+
+        // Replace template placeholder in cells[0]
+        ReplacePlaceholderInCell(cells[0], null);
+
+        // Update the content of cells[1]
+        bool firstItem = true;
+        string? propertyNameFound = null;
+        foreach (var item in ApplicationFieldItems)
+        {
+            if (firstItem)
+            {
+                // Replace template placeholder in the first paragraph
+                firstItem = false;
+                propertyNameFound = ReplacePlaceholderInCell(cells[1], item);
+                if (propertyNameFound == null)
+                    break;
+            }
+            else
+            {
+                // Append new paragraphs replacing template placeholder
+                Paragraph newParagraph = ReplaceTextInParagraph(templateParagraph, propertyNameFound, item);
+                cells[1].AppendChild(newParagraph);
+            }
+        }
+
+        parent.InsertAt(newTable, index);
+    }
+
+    public static void MergeApplicationFieldData(Body docxBody, string dataSetFilePath)
+    {
+        List<ApplicationFieldEntry> applicationFieldItems = DataCollection.DeserializeYAML<ApplicationFieldEntry>(dataSetFilePath);
+        ReplaceApplicationFieldTemplate(docxBody, applicationFieldItems);
+    }
+
     public static void ReplaceTechAptitudeTemplate(Body docxBody, List<TechAptitudeEntry> TechAptitudeItems)
     {
         const string tblCellMatchText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitude;
@@ -170,5 +268,133 @@ public class SkillsCollection
     {
         List<TechAptitudeEntry> techAptitudeItems = DataCollection.DeserializeYAML<TechAptitudeEntry>(dataSetFilePath);
         ReplaceTechAptitudeTemplate(docxBody, techAptitudeItems);
+    }
+
+    private static Paragraph ReplaceTextInParagraph(Paragraph srcParagraph, string? propertyName, ApplicationFieldEntry? listItem)
+    {
+        Paragraph paragraph = (Paragraph)srcParagraph.CloneNode(true);
+
+        // Concatenate all text from the runs in the paragraph
+        StringBuilder paragraphTextBuilder = new StringBuilder();
+        List<Text> textElements = new List<Text>();
+        foreach (Run run in paragraph.Elements<Run>())
+        {
+            foreach (Text text in run.Elements<Text>())
+            {
+                paragraphTextBuilder.Append(text.Text);
+                textElements.Add(text);
+            }
+        }
+        string currentParagraphText = paragraphTextBuilder.ToString();
+
+        // Get the placeholder by means of he regex search pattern:
+        // \{\{     - Matches the literal "{{". The '{' characters are escaped with '\' because they have special meaning in regex.
+        // .*?      - Matches any character (.), zero or more times (*), non-greedily (?).
+        //            The '?' after '*' makes it non-greedy, meaning it matches the shortest possible string.
+        // \}\}     - Matches the literal "}}". The '}' characters are escaped.
+        string placeholderPattern = @"\{\{.*?\}\}";
+        Match match = Regex.Match(currentParagraphText, placeholderPattern);
+        if (!match.Success)
+        {
+            return paragraph;
+        }
+        string placeholder = match.Value;
+        string replaceText = "";
+
+        // Get the value of the property name
+        var property = typeof(ApplicationFieldEntry).GetProperty(propertyName);
+        if (property != null)
+            replaceText = property.GetValue(listItem)?.ToString() ?? "";
+
+        // Proceed with replacement
+        // This is a simplified approach that assumes we can find and replace.
+        // For complex scenarios (multiple replacements in one paragraph, partial replacements),
+        // a more sophisticated algorithm is needed (e.g., breaking down runs into single characters,
+        // then reassembling).
+        // However, for typical full-string replacements, this can work.
+
+        // Get the RunProperties of the first run in the paragraph.
+        // This is a simplification. For truly preserving formatting across multiple runs,
+        // you'd need to identify the exact run properties for the *start* of the match.
+        RunProperties? firstRunProperties = paragraph.Elements<Run>().FirstOrDefault()?.RunProperties;
+
+        // Remove all existing runs from the paragraph
+        // WARNING: This will remove ALL formatting from the original runs.
+        // A more robust solution involves carefully manipulating runs around the replacement.
+        paragraph.RemoveAllChildren<Run>();
+
+        // Create a new Run for the replaced text
+        Run newRun = new Run();
+
+        // // Add the text to the Run
+        Text newText = new Text(currentParagraphText.Replace(placeholder, replaceText));
+        // Preserve the formatting of the first run (if available)
+        if (firstRunProperties != null)
+        {
+            newRun.AppendChild((RunProperties)firstRunProperties.CloneNode(true));
+        }
+        // Preserve spaces if they are significant
+        if (newText.Text.Contains(" ") || newText.Text.Contains("\t"))
+        {
+            newText.Space = SpaceProcessingModeValues.Preserve;
+        }
+        newRun.AppendChild(newText);
+
+        // Add the Run to the Paragrap
+        paragraph.AppendChild(newRun);
+
+        // TODO: If you need to handle multiple occurrences within the same paragraph
+        // or preserve formatting for parts of the paragraph *before* and *after* the replacement,
+        // you'll need to implement a more advanced algorithm as described in Eric White's blog
+        // (see search results). This typically involves breaking runs into individual characters.
+
+        return paragraph;
+    }
+
+    private static string? ReplacePlaceholderInCell(TableCell cell, ApplicationFieldEntry? listItem)
+    {
+        // Gather all Text elements in this cell
+        var textElements = cell.Descendants<Text>().ToList();
+        if (textElements.Count < 3)
+            return null;
+
+        // Look for the pattern: "*{{", someString, "}}"
+        string? propertyName = null;
+        for (int i = 0; i < textElements.Count - 2; i++)
+        {
+            string textStart = textElements[i].Text;
+            bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
+            if (isStart && textElements[i + 2].Text == "}}")
+            {
+                string placeholder = "{{" + textElements[i + 1].Text + "}}";
+                string replaceText = "";
+                // Map the placeholder to the property name and get its value
+                if (ApplicationFieldEntryPlaceholderMap.TableToProperty.TryGetValue(placeholder, out propertyName))
+                {
+                    // placeholder found
+                    if (listItem == null)
+                        replaceText = propertyName;
+                    else
+                    {
+                        var property = typeof(ApplicationFieldEntry).GetProperty(propertyName);
+                        if (property != null)
+                            replaceText = property.GetValue(listItem)?.ToString() ?? "";
+                    }
+                }
+                else
+                {
+                    // placeholder not found
+                    propertyName = null;
+                }
+
+                // Replace the three tokens with the replaceText, preserving formatting
+                // textElements[i].Text is "*{{", then remove the last two characters
+                textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
+                textElements[i + 1].Text = replaceText;
+                // Assign "" to the last two characters of textElements[i + 2].Text
+                textElements[i + 2].Text = "";
+            }
+        }
+        return propertyName;
     }
 }
