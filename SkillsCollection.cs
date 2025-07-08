@@ -51,13 +51,10 @@ public static class TechAptitudeEntryPlaceholderMap
     // Maps placeholders back to property names of TechAptitudeEntry
     public static readonly Dictionary<string, string> TableToProperty = new Dictionary<string, string>
     {
+        { PlaceholderTechAptitude, "Technical aptitude" },  // fixed string
         { PlaceholderAptitude, nameof(TechAptitudeEntry.Skill) },
         { PlaceholderDescription, nameof(TechAptitudeEntry.Desc) }
     };
-
-    // The PlaceholderTechAptitude placeholder is unique.
-    // It is replaced with a fixed substitute string only in the first generated table.
-    public const string PlaceholderTechAptitudeSubstitute = "Technical aptitude";
 }
 
 public class SkillsCollection
@@ -99,7 +96,12 @@ public class SkillsCollection
         Paragraph templateParagraph = (Paragraph)cellParagraphs[0].CloneNode(true);
 
         // Replace template placeholder in cells[0]
-        ReplacePlaceholderInCell(cells[0], null);
+        // Since listItem is null, explicitly tell the method that T is <ApplicationFieldEntry>
+        DataCollection.ReplacePlaceholderInCell<ApplicationFieldEntry>(
+            cells[0],
+            null,  // Pass listItem = null
+            ApplicationFieldEntryPlaceholderMap.TableToProperty
+        );
 
         // Update the content of cells[1]
         bool firstItem = true;
@@ -110,7 +112,11 @@ public class SkillsCollection
             {
                 // Replace template placeholder in the first paragraph
                 firstItem = false;
-                propertyNameFound = ReplacePlaceholderInCell(cells[1], item);
+                propertyNameFound = DataCollection.ReplacePlaceholderInCell(
+                    cells[1],
+                    item,
+                    ApplicationFieldEntryPlaceholderMap.TableToProperty
+                );
                 if (propertyNameFound == null)
                     break;
             }
@@ -141,7 +147,7 @@ public class SkillsCollection
 
         var tablesToInsert = new List<Table>();
 
-        bool isFirstTable = true;
+        bool isFirstCell = true;
         foreach (var item in TechAptitudeItems)
         {
             // Clone the template table
@@ -152,49 +158,26 @@ public class SkillsCollection
             {
                 foreach (var cell in row.Elements<TableCell>())
                 {
-                    // Gather all Text elements in this cell
-                    var textElements = cell.Descendants<Text>().ToList();
-                    // var cellText = string.Concat(textElements.Select(t => t.Text));
-                    if (textElements.Count < 3) continue;
-
-                    // Look for the pattern: "*{{", someString, "}}"
-                    for (int i = 0; i < textElements.Count - 2; i++)
+                    if (isFirstCell)
                     {
-                        string textStart = textElements[i].Text;
-                        bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
-                        if (isStart && textElements[i + 2].Text == "}}")
-                        {
-                            string placeholder = "{{" + textElements[i + 1].Text + "}}";
-                            string replaceText = "";
-                            if (placeholder == tblCellMatchText)
-                            {
-                                // tblCellMatchText placeholder is special
-                                // Only replace it with some string in the first table
-                                // leaving it empty subsequently
-                                if (isFirstTable)
-                                    replaceText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitudeSubstitute;
-                            }
-                            else
-                            {
-                                // Map the placeholder to the property name and get its value
-                                if (TechAptitudeEntryPlaceholderMap.TableToProperty.TryGetValue(placeholder, out string? propertyName))
-                                {
-                                    var property = typeof(TechAptitudeEntry).GetProperty(propertyName);
-                                    if (property != null)
-                                        replaceText = property.GetValue(item)?.ToString() ?? "";
-                                }
-                            }
-                            // Replace the three tokens with the replaceText, preserving formatting
-                            // textElements[i].Text is "*{{", then remove the last two characters
-                            textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
-                            textElements[i + 1].Text = replaceText;
-                            // Assign "" to the last two characters of textElements[i + 2].Text
-                            textElements[i + 2].Text = "";
-                        }
+                        // Since listItem is null, explicitly tell the method that T is <TechAptitudeEntry>
+                        DataCollection.ReplacePlaceholderInCell<TechAptitudeEntry>(
+                            cell,
+                            null,  // Pass listItem = null
+                            TechAptitudeEntryPlaceholderMap.TableToProperty
+                        );
+                        isFirstCell = false;
+                    }
+                    else
+                    {
+                        DataCollection.ReplacePlaceholderInCell(
+                            cell,
+                            item,
+                            TechAptitudeEntryPlaceholderMap.TableToProperty
+                        );
                     }
                 }
             }
-            isFirstTable = false;
             tablesToInsert.Add(newTable);
         }
 
@@ -202,7 +185,7 @@ public class SkillsCollection
         int insertIndex = template.Index;
         foreach (var tbl in tablesToInsert)
             template.Parent.InsertAt(tbl, insertIndex++);
-}
+    }
 
     public static void MergeTechAptitudeData(Body docxBody, string dataSetFilePath)
     {
@@ -289,52 +272,5 @@ public class SkillsCollection
         // (see search results). This typically involves breaking runs into individual characters.
 
         return paragraph;
-    }
-
-    private static string? ReplacePlaceholderInCell(TableCell cell, ApplicationFieldEntry? listItem)
-    {
-        // Gather all Text elements in this cell
-        var textElements = cell.Descendants<Text>().ToList();
-        if (textElements.Count < 3)
-            return null;
-
-        // Look for the pattern: "*{{", someString, "}}"
-        string? propertyName = null;
-        for (int i = 0; i < textElements.Count - 2; i++)
-        {
-            string textStart = textElements[i].Text;
-            bool isStart = textStart.Length >= 2 && textStart.Substring(textStart.Length - 2) == "{{";
-            if (isStart && textElements[i + 2].Text == "}}")
-            {
-                string placeholder = "{{" + textElements[i + 1].Text + "}}";
-                string replaceText = "";
-                // Map the placeholder to the property name and get its value
-                if (ApplicationFieldEntryPlaceholderMap.TableToProperty.TryGetValue(placeholder, out propertyName))
-                {
-                    // placeholder found
-                    if (listItem == null)
-                        replaceText = propertyName;
-                    else
-                    {
-                        var property = typeof(ApplicationFieldEntry).GetProperty(propertyName);
-                        if (property != null)
-                            replaceText = property.GetValue(listItem)?.ToString() ?? "";
-                    }
-                }
-                else
-                {
-                    // placeholder not found
-                    propertyName = null;
-                }
-
-                // Replace the three tokens with the replaceText, preserving formatting
-                // textElements[i].Text is "*{{", then remove the last two characters
-                textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
-                textElements[i + 1].Text = replaceText;
-                // Assign "" to the last two characters of textElements[i + 2].Text
-                textElements[i + 2].Text = "";
-            }
-        }
-        return propertyName;
     }
 }

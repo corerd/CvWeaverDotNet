@@ -2,6 +2,7 @@ using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
+using System.Reflection;
 
 public class DataCollection
 {
@@ -41,6 +42,87 @@ public class DataCollection
         foundTable.Remove();
 
         return (foundTable, parent, index);
+    }
+
+    /// <summary>
+    /// Replaces placeholders in a given TableCell with values from a generic list item.
+    /// The method assumes placeholders are structured as: 'partial_text{{', 'PLACEHOLDER_KEY', '}}'.
+    /// </summary>
+    /// <typeparam name="T">The type of the list item containing the properties to substitute.</typeparam>
+    /// <param name="cell">The TableCell to search and replace within.</param>
+    /// <param name="listItem">The object instance from which to retrieve property values for substitution.</param>
+    /// <param name="tableToPropertyMap">A dictionary mapping placeholder strings to property names (or fixed strings).</param>
+    /// <returns>The property name that was replaced, or null if no matching placeholder was found.</returns>
+    public static string? ReplacePlaceholderInCell<T>(
+        TableCell cell,
+        T? listItem,
+        Dictionary<string, string> tableToPropertyMap) where T : class // Constraint T to be a class (reference type)
+    {
+        // Gather all Text elements in this cell. Using Descendants<Text>() is robust.
+        var textElements = cell.Descendants<Text>().ToList();
+
+        // If there are fewer than 3 text elements, the pattern "{{PLACEHOLDER}}" cannot exist.
+        // It should be at least: Text containing "{{", Text with placeholder name, Text containing "}}"
+        if (textElements.Count < 3)
+            return null;
+
+        string? replacedPropertyName;
+
+        // Look for the pattern: "partial_text{{", "someString", "}}"
+        // Iterate through text elements, checking for the {{ and }} markers
+        for (int i = 0; i < textElements.Count - 2; i++)
+        {
+            string textStart = textElements[i].Text;
+            string textEnd = textElements[i + 2].Text;
+
+            // Check if the current Text element ends with "{{"
+            bool isStartMarker = textStart.EndsWith("{{");
+            // Check if the Text element two positions ahead is exactly "}}"
+            bool isEndMarker = textEnd == "}}";
+
+            if (isStartMarker && isEndMarker)
+            {
+                string placeholderContent = textElements[i + 1].Text;
+                string fullPlaceholder = "{{" + placeholderContent + "}}";
+                string replaceText = "";
+
+                // Map the full placeholder to the property name (or fixed string)
+                if (tableToPropertyMap.TryGetValue(fullPlaceholder, out replacedPropertyName))
+                {
+                    // Placeholder found in the map
+                    if (listItem == null)
+                    {
+                        // If listItem is null, replace with the property name or fixed string itself
+                        replaceText = replacedPropertyName;
+                    }
+                    else
+                    {
+                        // Attempt to get the property value from the listItem
+                        PropertyInfo? property = typeof(T).GetProperty(replacedPropertyName);
+                        if (property != null)
+                        {
+                            // Get the value and convert to string, handling null values
+                            replaceText = property.GetValue(listItem)?.ToString() ?? "";
+                        }
+                    }
+
+                    // --- Perform the replacement in the Open XML elements ---
+                    // textElements[i] contains "partial_text{{"
+                    // Remove the last two characters "{{"
+                    textElements[i].Text = textElements[i].Text.Substring(0, textElements[i].Text.Length - 2);
+
+                    // textElements[i+1] contains the actual placeholder name, replace with the value
+                    textElements[i + 1].Text = replaceText;
+
+                    // textElements[i+2] contains "}}", assign "" to effectively remove it
+                    textElements[i + 2].Text = "";
+
+                    // Since we found and replaced a placeholder, we can return.
+                    return replacedPropertyName;
+                }
+            }
+        }
+        return null; // No matching placeholder found and replaced
     }
 
     /// <summary>
