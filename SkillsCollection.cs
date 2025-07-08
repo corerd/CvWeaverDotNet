@@ -64,46 +64,15 @@ public class SkillsCollection
 {
     public static void ReplaceApplicationFieldTemplate(Body docxBody, List<ApplicationFieldEntry> ApplicationFieldItems)
     {
-        const string tblCellMatchText = ApplicationFieldEntryPlaceholderMap.PlaceholderApplicationField;
-
-        // Find the original table by matching the content of cell (0,0)
-        Table? templateTable = null;
-        foreach (var table in docxBody.Elements<Table>())
-        {
-            var firstRow = table.Elements<TableRow>().FirstOrDefault();
-            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
-            var cellText = firstCell?.InnerText;
-
-            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
-            {
-                templateTable = table;
-                break;
-            }
-        }
-
-        if (templateTable == null)
-        {
-            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+        var template = DataCollection.ExtractTableAtPlaceholder(docxBody, ApplicationFieldEntryPlaceholderMap.PlaceholderApplicationField);
+        if (template.FoundTable == null || template.Parent == null || template.Index < 0)
             return;
-        }
 
-        // Capture index of original table in its parent
-        var parent = templateTable.Parent;
-        if (parent == null)
-        {
-            Console.WriteLine("The template table's parent is null.");
-            return;
-        }
-        int index = parent.ChildElements.ToList().IndexOf(templateTable);
+        // Clone the found table
+        var newTable = (Table)template.FoundTable.CloneNode(true);
 
-        // Remove original table from the document
-        templateTable.Remove();
-
-        // Clone the template table
-        // which should be a single row, two-column table
-        var newTable = (Table)templateTable.CloneNode(true);
-
-        // Assuming newTable is a single-row table, get the first (and only) row
+        // Assuming newTable is a single-row, two-column table
+        // get the first (and only) row
         TableRow? templateRow = newTable.Elements<TableRow>().FirstOrDefault();
         if (templateRow == null)
         {
@@ -153,7 +122,7 @@ public class SkillsCollection
             }
         }
 
-        parent.InsertAt(newTable, index);
+        template.Parent.InsertAt(newTable, template.Index);
     }
 
     public static void MergeApplicationFieldData(Body docxBody, string dataSetFilePath)
@@ -166,38 +135,9 @@ public class SkillsCollection
     {
         const string tblCellMatchText = TechAptitudeEntryPlaceholderMap.PlaceholderTechAptitude;
 
-        // Find the original table by matching the content of cell (0,0)
-        Table? templateTable = null;
-        foreach (var table in docxBody.Elements<Table>())
-        {
-            var firstRow = table.Elements<TableRow>().FirstOrDefault();
-            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
-            var cellText = firstCell?.InnerText;
-
-            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
-            {
-                templateTable = table;
-                break;
-            }
-        }
-
-        if (templateTable == null)
-        {
-            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+        var template = DataCollection.ExtractTableAtPlaceholder(docxBody, tblCellMatchText);
+        if (template.FoundTable == null || template.Parent == null || template.Index < 0)
             return;
-        }
-
-        // Capture index of original table in its parent
-        var parent = templateTable.Parent;
-        if (parent == null)
-        {
-            Console.WriteLine("The template table's parent is null.");
-            return;
-        }
-        int index = parent.ChildElements.ToList().IndexOf(templateTable);
-
-        // Remove original table from the document
-        templateTable.Remove();
 
         var tablesToInsert = new List<Table>();
 
@@ -205,7 +145,7 @@ public class SkillsCollection
         foreach (var item in TechAptitudeItems)
         {
             // Clone the template table
-            var newTable = (Table)templateTable.CloneNode(true);
+            var newTable = (Table)template.FoundTable.CloneNode(true);
 
             // Replace template placeholders in the cloned table
             foreach (var row in newTable.Elements<TableRow>())
@@ -259,10 +199,10 @@ public class SkillsCollection
         }
 
         // Insert all new tables at the original index
-        int insertIndex = index;
+        int insertIndex = template.Index;
         foreach (var tbl in tablesToInsert)
-            parent.InsertAt(tbl, insertIndex++);
-    }
+            template.Parent.InsertAt(tbl, insertIndex++);
+}
 
     public static void MergeTechAptitudeData(Body docxBody, string dataSetFilePath)
     {

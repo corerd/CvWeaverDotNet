@@ -34,49 +34,24 @@ public class HistoryCollection
 {
     public static void ReplaceHistoryTemplate(Body docxBody, List<HistoryEntry> historyItems)
     {
-        //string tblCellMatchText = "{{tbl_history_year}}";
-        // Get the table name for Year property
+        // Get the table placeholder from Year property
         HistoryEntryTemplateMap.PropertyToTable.TryGetValue(nameof(HistoryEntry.Year), out string? tblCellMatchText);
-
-        // Find the original table by matching the content of cell (0,0)
-        Table? templateTable = null;
-        foreach (var table in docxBody.Elements<Table>())
+        if (string.IsNullOrEmpty(tblCellMatchText))
         {
-            var firstRow = table.Elements<TableRow>().FirstOrDefault();
-            var firstCell = firstRow?.Elements<TableCell>().FirstOrDefault();
-            var cellText = firstCell?.InnerText;
-
-            if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(tblCellMatchText) && cellText.Contains(tblCellMatchText))
-            {
-                templateTable = table;
-                break;
-            }
-        }
-
-        if (templateTable == null)
-        {
-            Console.WriteLine($"No table found with cell (0,0) text matching '{tblCellMatchText}'");
+            Console.WriteLine("No table placeholder found.");
             return;
         }
 
-        // Capture index of original table in its parent
-        var parent = templateTable.Parent;
-        if (parent == null)
-        {
-            Console.WriteLine("The template table's parent is null.");
+        var template = DataCollection.ExtractTableAtPlaceholder(docxBody, tblCellMatchText);
+        if (template.FoundTable == null || template.Parent == null || template.Index < 0)
             return;
-        }
-        int index = parent.ChildElements.ToList().IndexOf(templateTable);
-
-        // Remove original table from the document
-        templateTable.Remove();
 
         var tablesToInsert = new List<Table>();
 
         foreach (var item in historyItems)
         {
             // Clone the template table
-            var newTable = (Table)templateTable.CloneNode(true);
+            var newTable = (Table)template.FoundTable.CloneNode(true);
 
             // Replace template placeholders in the cloned table
             foreach (var row in newTable.Elements<TableRow>())
@@ -127,13 +102,13 @@ public class HistoryCollection
         }
 
         // Insert all new tables at the original index
-        int insertIndex = index;
+        int insertIndex = template.Index;
         foreach (var tbl in tablesToInsert)
         {
-            parent.InsertAt(tbl, insertIndex++);
+            template.Parent.InsertAt(tbl, insertIndex++);
             // Optionally add a blank paragraph between tables
             var emptyParagraph = new Paragraph(new Run(new Text("")));
-            parent.InsertAt(emptyParagraph, insertIndex++);
+            template.Parent.InsertAt(emptyParagraph, insertIndex++);
         }
     }
 
