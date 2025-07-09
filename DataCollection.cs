@@ -3,6 +3,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
 using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
 
 public class DataCollection
 {
@@ -123,6 +125,90 @@ public class DataCollection
             }
         }
         return null; // No matching placeholder found and replaced
+    }
+
+    public static Paragraph ReplaceTextInParagraph<T>(
+        Paragraph srcParagraph,
+        string? propertyName,
+        T? listItem) where T : class
+    {
+        Paragraph paragraph = (Paragraph)srcParagraph.CloneNode(true);
+
+        // Concatenate all text from the runs in the paragraph
+        StringBuilder paragraphTextBuilder = new StringBuilder();
+        List<Text> textElements = new List<Text>();
+        foreach (Run run in paragraph.Elements<Run>())
+        {
+            foreach (Text text in run.Elements<Text>())
+            {
+                paragraphTextBuilder.Append(text.Text);
+                textElements.Add(text);
+            }
+        }
+        string currentParagraphText = paragraphTextBuilder.ToString();
+
+        // Get the placeholder by means of he regex search pattern:
+        // \{\{     - Matches the literal "{{". The '{' characters are escaped with '\' because they have special meaning in regex.
+        // .*?      - Matches any character (.), zero or more times (*), non-greedily (?).
+        //            The '?' after '*' makes it non-greedy, meaning it matches the shortest possible string.
+        // \}\}     - Matches the literal "}}". The '}' characters are escaped.
+        string placeholderPattern = @"\{\{.*?\}\}";
+        Match match = Regex.Match(currentParagraphText, placeholderPattern);
+        if (!match.Success)
+        {
+            return paragraph;
+        }
+        string placeholder = match.Value;
+        string replaceText = "";
+
+        // Get the value of the property name
+        var property = typeof(T).GetProperty(propertyName);
+        if (property != null)
+            replaceText = property.GetValue(listItem)?.ToString() ?? "";
+
+        // Proceed with replacement
+        // This is a simplified approach that assumes we can find and replace.
+        // For complex scenarios (multiple replacements in one paragraph, partial replacements),
+        // a more sophisticated algorithm is needed (e.g., breaking down runs into single characters,
+        // then reassembling).
+        // However, for typical full-string replacements, this can work.
+
+        // Get the RunProperties of the first run in the paragraph.
+        // This is a simplification. For truly preserving formatting across multiple runs,
+        // you'd need to identify the exact run properties for the *start* of the match.
+        RunProperties? firstRunProperties = paragraph.Elements<Run>().FirstOrDefault()?.RunProperties;
+
+        // Remove all existing runs from the paragraph
+        // WARNING: This will remove ALL formatting from the original runs.
+        // A more robust solution involves carefully manipulating runs around the replacement.
+        paragraph.RemoveAllChildren<Run>();
+
+        // Create a new Run for the replaced text
+        Run newRun = new Run();
+
+        // // Add the text to the Run
+        Text newText = new Text(currentParagraphText.Replace(placeholder, replaceText));
+        // Preserve the formatting of the first run (if available)
+        if (firstRunProperties != null)
+        {
+            newRun.AppendChild((RunProperties)firstRunProperties.CloneNode(true));
+        }
+        // Preserve spaces if they are significant
+        if (newText.Text.Contains(" ") || newText.Text.Contains("\t"))
+        {
+            newText.Space = SpaceProcessingModeValues.Preserve;
+        }
+        newRun.AppendChild(newText);
+
+        // Add the Run to the Paragrap
+        paragraph.AppendChild(newRun);
+
+        // TODO: If you need to handle multiple occurrences within the same paragraph
+        // or preserve formatting for parts of the paragraph *before* and *after* the replacement,
+        // you'll need to implement a more advanced algorithm as described in Eric White's blog
+        // (see search results). This typically involves breaking runs into individual characters.
+
+        return paragraph;
     }
 
     /// <summary>
