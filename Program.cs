@@ -35,13 +35,13 @@ public class CvWeaverDotNet
             }
 
             Console.WriteLine($"Merge '{DataStore.SkillsPath}'");
-            SkillsCollection.MergeSkillData(body, DataStore.SkillsPath);
+            SkillsMain.MergeDataSet(body, DataStore.SkillsPath);
 
             Console.WriteLine($"Merge '{DataStore.ApplicationFieldPath}'");
-            SkillsCollection.MergeApplicationFieldData(body, DataStore.ApplicationFieldPath);
+            ApplicationFields.MergeDataSet(body, DataStore.ApplicationFieldPath);
 
-            Console.WriteLine($"Merge '{DataStore.SkillDevPath}'");
-            SkillsCollection.MergeTechAptitudeData(body, DataStore.SkillDevPath);
+            Console.WriteLine($"Merge '{DataStore.SkillsDevPath}'");
+            SkillsDev.MergeDataSet(body, DataStore.SkillsDevPath);
 
             Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
             HistoryCollection.MergeHistoryData(body, DataStore.HistoryPath);

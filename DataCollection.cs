@@ -162,9 +162,12 @@ public class DataCollection
         string replaceText = "";
 
         // Get the value of the property name
-        var property = typeof(T).GetProperty(propertyName);
-        if (property != null)
-            replaceText = property.GetValue(listItem)?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(propertyName))
+        {
+            PropertyInfo? property = typeof(T).GetProperty(propertyName);
+            if (property != null)
+                replaceText = property.GetValue(listItem)?.ToString() ?? "";
+        }
 
         // Proceed with replacement
         // This is a simplified approach that assumes we can find and replace.
