@@ -63,10 +63,10 @@ public class SkillsMain
         Paragraph templateParagraph = (Paragraph)cellParagraphs[0].CloneNode(true);
 
         // Replace template placeholder in cells[0]
-        // Since listItem is null, explicitly tell the method that T is <ApplicationFieldEntry>
-        DataCollection.ReplacePlaceholderInCell<YamlEntry>(
+        // Since dataItem is null, explicitly tell the method that its type is <YamlEntry>
+        TemplateReplacer.ReplacePlaceholderInTableCell<YamlEntry>(
             cells[0],
-            null,  // Pass listItem = null
+            null,  // Pass dataItem = null
             PlaceholderYamlPropertyMap.PlaceholderToProperty
         );
 
@@ -79,11 +79,10 @@ public class SkillsMain
             {
                 // Replace template placeholder in the first paragraph
                 firstItem = false;
-                propertyNameFound = DataCollection.ReplacePlaceholderInCell(
+                propertyNameFound = TemplateReplacer.ReplacePlaceholderInTableCell(
                     cells[1],
                     item,
-                    PlaceholderYamlPropertyMap.PlaceholderToProperty
-                );
+                    PlaceholderYamlPropertyMap.PlaceholderToProperty);
                 if (propertyNameFound == null)
                     break;
             }

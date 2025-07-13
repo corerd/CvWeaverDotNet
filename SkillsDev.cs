@@ -51,21 +51,20 @@ public class SkillsDev
                 {
                     if (isFirstCell)
                     {
-                        // Since listItem is null, explicitly tell the method that T is <YamlEntry>
-                        DataCollection.ReplacePlaceholderInCell<YamlEntry>(
+                        // Since dataItem is null, explicitly tell the method that its type is <YamlEntry>
+                        TemplateReplacer.ReplacePlaceholderInTableCell<YamlEntry>(
                             cell,
-                            null,  // Pass listItem = null
+                            null,  // Pass dataItem = null
                             PlaceholderYamlPropertyMap.TableToProperty
                         );
                         isFirstCell = false;
                     }
                     else
                     {
-                        DataCollection.ReplacePlaceholderInCell(
+                        TemplateReplacer.ReplacePlaceholderInTableCell(
                             cell,
                             item,
-                            PlaceholderYamlPropertyMap.TableToProperty
-                        );
+                            PlaceholderYamlPropertyMap.TableToProperty);
                     }
                 }
             }

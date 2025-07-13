@@ -65,12 +65,11 @@ public class ApplicationFields
         Paragraph templateParagraph = (Paragraph)cellParagraphs[0].CloneNode(true);
 
         // Replace template placeholder in cells[0]
-        // Since listItem is null, explicitly tell the method that T is <YamlEntry>
-        DataCollection.ReplacePlaceholderInCell<YamlEntry>(
+        // Since dataItem is null, explicitly tell the method that its type is <YamlEntry>
+        TemplateReplacer.ReplacePlaceholderInTableCell<YamlEntry>(
             cells[0],
-            null,  // Pass listItem = null
-            PlaceholderYamlPropertyMap.TableToProperty
-        );
+            null,  // Pass dataItem = null
+            PlaceholderYamlPropertyMap.TableToProperty);
 
         // Update the content of cells[1]
         bool firstItem = true;
@@ -81,11 +80,10 @@ public class ApplicationFields
             {
                 // Replace template placeholder in the first paragraph
                 firstItem = false;
-                propertyNameFound = DataCollection.ReplacePlaceholderInCell(
+                propertyNameFound = TemplateReplacer.ReplacePlaceholderInTableCell(
                     cells[1],
                     item,
-                    PlaceholderYamlPropertyMap.TableToProperty
-                );
+                    PlaceholderYamlPropertyMap.TableToProperty);
                 if (propertyNameFound == null)
                     break;
             }
