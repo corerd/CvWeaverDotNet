@@ -44,7 +44,7 @@ public class CvWeaverDotNet
             SkillsDev.MergeDataSet(body, DataStore.SkillsDevPath);
 
             Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
-            History.MergeDataSet(body, DataStore.HistoryPath);
+            History.MergeDataSet(body, DataStore.HistoryPath, DataStore.ApplicationFieldPath);
 
             // Save both the document and its main part
             wordDoc.MainDocumentPart.Document.Save();

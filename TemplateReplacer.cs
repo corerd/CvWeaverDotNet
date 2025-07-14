@@ -84,7 +84,10 @@ public static class TemplateReplacer
                     if (property.PropertyType == typeof(List<string>))
                     {
                         List<string>? fieldsList = property.GetValue(dataItem) as List<string>;
-                        propertyValue = string.Join(", ", fieldsList ?? new List<string>());
+                        if (fieldsList != null)
+                            propertyValue = string.Join(", ", fieldsList.Select(item => $"[[{item}]]"));
+                        else
+                            propertyValue = "";
                     }
                     else
                         propertyValue = property.GetValue(dataItem)?.ToString() ?? "";
@@ -102,7 +105,7 @@ public static class TemplateReplacer
         return (propertyName, propertyValue);
     }
 
-    private static void ReplaceAcrossRuns(List<Text> texts, int startIndex, int length, string newText)
+    public static void ReplaceAcrossRuns(List<Text> texts, int startIndex, int length, string newText)
     {
         int currentIndex = 0;
         int replaced = 0;
