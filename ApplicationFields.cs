@@ -2,33 +2,26 @@ using DocumentFormat.OpenXml.Wordprocessing;
 
 public class ApplicationFields
 {
-    private class YamlEntry
-    {
-        public string? Id { get; set; }
-        public string? Name { get; set; }
-        public string? Desc { get; set; }
-    }
-
     private static class PlaceholderYamlPropertyMap
     {
         public const string PlaceholderTableId = "{{tplAppField}}";
         public const string PlaceholderTplDescription = "{{tplAppFieldList}}";
 
-        // Maps property names of YamlEntry to their corresponding placeholders in the Word table
+        // Maps property names of DataCollection.Domain to their corresponding placeholders in the Word table
         public static readonly Dictionary<string, string> PropertyToTable = new Dictionary<string, string>
         {
-            { nameof(YamlEntry.Desc), PlaceholderTplDescription }
+            { nameof(DataCollection.Domain.Desc), PlaceholderTplDescription }
         };
 
-        // Maps placeholders back to property names of YamlEntry
+        // Maps placeholders back to property names of DataCollection.Domain
         public static readonly Dictionary<string, string> TableToProperty = new Dictionary<string, string>
         {
             { PlaceholderTableId, "Application fields" },  // Special: map to fixed string
-            { PlaceholderTplDescription, nameof(YamlEntry.Desc) }
+            { PlaceholderTplDescription, nameof(DataCollection.Domain.Desc) }
         };
     }
 
-    private static void ReplaceWordTemplate(Body docxBody, List<YamlEntry> dataList)
+    public static void MergeDataSet(Body docxBody, List<DataCollection.Domain> dataList)
     {
         var template = DataCollection.ExtractTableAtPlaceholder(docxBody, PlaceholderYamlPropertyMap.PlaceholderTableId);
         if (template.FoundTable == null || template.Parent == null || template.Index < 0)
@@ -66,7 +59,7 @@ public class ApplicationFields
 
         // Replace template placeholder in cells[0]
         // Since dataItem is null, explicitly tell the method that its type is <YamlEntry>
-        TemplateReplacer.ReplacePlaceholderInTableCell<YamlEntry>(
+        TemplateReplacer.ReplacePlaceholderInTableCell<DataCollection.Domain>(
             cells[0],
             null,  // Pass dataItem = null
             PlaceholderYamlPropertyMap.TableToProperty);
@@ -96,12 +89,6 @@ public class ApplicationFields
         }
 
         template.Parent.InsertAt(newTable, template.Index);
-    }
-
-    public static void MergeDataSet(Body docxBody, string yamlFilePath)
-    {
-        List<YamlEntry> dataSet = DataCollection.DeserializeYAML<YamlEntry>(yamlFilePath);
-        ReplaceWordTemplate(docxBody, dataSet);
     }
 
 }

@@ -42,7 +42,7 @@ public class CvWeaverDotNet
             SkillsMain.MergeDataSet(body, DataStore.SkillsPath);
 
             Console.WriteLine($"Merge '{DataStore.ApplicationFieldPath}'");
-            ApplicationFields.MergeDataSet(body, DataStore.ApplicationFieldPath);
+            ApplicationFields.MergeDataSet(body, applicationFields);
 
             Console.WriteLine($"Merge '{DataStore.SkillsDevPath}'");
             SkillsDev.MergeDataSet(body, DataStore.SkillsDevPath);
