@@ -8,6 +8,13 @@ using System.Text.RegularExpressions;
 
 public class DataCollection
 {
+    public class Domain
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Desc { get; set; }
+    }
+
     public static (Table? FoundTable, OpenXmlElement? Parent, int Index) ExtractTableAtPlaceholder(Body docxBody, string firstCellPlaceholder)
     {
         // Find the original table by matching the content of cell (0,0)

@@ -19,11 +19,13 @@ public static class TemplateReplacer
     /// <param name="dataItem">The object containing data to replace placeholders with. Can be null.</param>
     /// <param name="tableToPropertyMap">A dictionary mapping placeholder strings (e.g., "{{placeholder}}") to
     /// property names of T or fixed strings.</param>
+    /// <param name="domainDictionary">Optional dictionary mapping domain Id to Name.</param>
     /// <returns>The property name or fixed string that was replaced, or null if no match was found.</returns>
     public static string? ReplacePlaceholderInTableCell<T>(
         TableCell cell,
         T? dataItem,
-        Dictionary<string, string> tableToPropertyMap) where T : class
+        Dictionary<string, string> tableToPropertyMap,
+        Dictionary<string, DataCollection.Domain>? domainDictionary = null) where T : class
     {
         var texts = cell.Descendants<Text>().ToList();
         var fullText = string.Join("", texts.Select(t => t.Text));
@@ -42,7 +44,7 @@ public static class TemplateReplacer
         foreach (Match match in matches)
         {
             string placeholder = match.Value;
-            var found = SearchPlaceholderProperty(placeholder, dataItem, tableToPropertyMap);
+            var found = SearchPlaceholderProperty(placeholder, dataItem, tableToPropertyMap, domainDictionary);
             if (found.PropertyName == null || found.PropertyValue == null)
             {
                 // Placeholder and/or propertyName not found
@@ -63,7 +65,8 @@ public static class TemplateReplacer
     private static (string? PropertyName, string? PropertyValue) SearchPlaceholderProperty<T>(
         string placeholder,
         T? dataItem,
-        Dictionary<string, string> tableToPropertyMap) where T : class
+        Dictionary<string, string> tableToPropertyMap,
+        Dictionary<string, DataCollection.Domain>? domainDictionary) where T : class
     {
         string? propertyValue = null;
 
@@ -83,9 +86,14 @@ public static class TemplateReplacer
                 {
                     if (property.PropertyType == typeof(List<string>))
                     {
-                        List<string>? fieldsList = property.GetValue(dataItem) as List<string>;
-                        if (fieldsList != null)
-                            propertyValue = string.Join(", ", fieldsList.Select(item => $"[[{item}]]"));
+                        List<string>? domainIdList = property.GetValue(dataItem) as List<string>;
+                        if (domainIdList != null)
+                        {
+                            if (domainDictionary != null)
+                                propertyValue = JoinDomains(domainIdList, domainDictionary);
+                            else
+                                propertyValue = string.Join(", ", domainIdList.Select(item => $"{item}"));
+                        }
                         else
                             propertyValue = "";
                     }
@@ -105,7 +113,38 @@ public static class TemplateReplacer
         return (propertyName, propertyValue);
     }
 
-    public static void ReplaceAcrossRuns(List<Text> texts, int startIndex, int length, string newText)
+    private static string JoinDomains(
+        List<string> domainIdList,
+        Dictionary<string, DataCollection.Domain> domainDictionary)
+    {
+        var resultParts = new List<string>();
+
+        foreach (string id in domainIdList)
+        {
+            if (domainDictionary.TryGetValue(id, out DataCollection.Domain? domain))
+            {
+                // ID found in dictionary, use the domain's Name (if not null)
+                if (domain.Name != null)
+                {
+                    resultParts.Add(domain.Name);
+                }
+                else
+                {
+                    // If domain.Name is null, append the ID itself
+                    resultParts.Add(id);
+                }
+            }
+            else
+            {
+                // ID not found in dictionary, append the ID itself
+                resultParts.Add(id);
+            }
+        }
+
+        return string.Join(", ", resultParts);
+    }
+
+    private static void ReplaceAcrossRuns(List<Text> texts, int startIndex, int length, string newText)
     {
         int currentIndex = 0;
         int replaced = 0;

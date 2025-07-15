@@ -34,6 +34,10 @@ public class CvWeaverDotNet
                 return;
             }
 
+            Console.WriteLine("Get Application Fields");
+            List<DataCollection.Domain> applicationFields =
+                DataCollection.DeserializeYAML<DataCollection.Domain>(DataStore.ApplicationFieldPath);
+
             Console.WriteLine($"Merge '{DataStore.SkillsPath}'");
             SkillsMain.MergeDataSet(body, DataStore.SkillsPath);
 
@@ -43,8 +47,8 @@ public class CvWeaverDotNet
             Console.WriteLine($"Merge '{DataStore.SkillsDevPath}'");
             SkillsDev.MergeDataSet(body, DataStore.SkillsDevPath);
 
-            Console.WriteLine($"Merge '{DataStore.HistoryPath}'");
-            History.MergeDataSet(body, DataStore.HistoryPath, DataStore.ApplicationFieldPath);
+            Console.WriteLine($"Merge '{DataStore.HistoryPath}' and Application Fields");
+            History.MergeDataSet(body, DataStore.HistoryPath, applicationFields);
 
             // Save both the document and its main part
             wordDoc.MainDocumentPart.Document.Save();

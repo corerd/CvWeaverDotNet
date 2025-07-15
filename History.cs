@@ -43,7 +43,7 @@ public class History
     private static void ReplaceWordTemplate(
         Body docxBody,
         List<YamlEntry> dataList,
-        Dictionary<string, ApplicationField> application)
+        Dictionary<string, DataCollection.Domain> domainDictionary)
     {
         // Get the table placeholder from Year property
         PlaceholderYamlPropertyMap.PropertyToTable.TryGetValue(nameof(YamlEntry.Year), out string? tblCellMatchText);
@@ -69,13 +69,13 @@ public class History
             {
                 foreach (var cell in row.Elements<TableCell>())
                 {
-                    TemplateReplacer.ReplacePlaceholderInTableCell(cell, item, PlaceholderYamlPropertyMap.TableToProperty);
+                    TemplateReplacer.ReplacePlaceholderInTableCell(
+                        cell,
+                        item,
+                        PlaceholderYamlPropertyMap.TableToProperty,
+                        domainDictionary);
                 }
             }
-
-            // Get cell 1 at row 1 of newTable
-            var firstRow = newTable.Elements<TableRow>().ElementAtOrDefault(1);
-            while (ReplaceApplication(firstRow?.Elements<TableCell>().ElementAtOrDefault(1), application));
 
             tablesToInsert.Add(newTable);
         }
@@ -91,53 +91,15 @@ public class History
         }
     }
 
-    private static bool ReplaceApplication(
-        TableCell? cell,
-        Dictionary<string, ApplicationField> application)
-    {
-        if (cell == null)
-            return false;  // no cell
-
-        var texts = cell.Descendants<Text>().ToList();
-        var fullText = string.Join("", texts.Select(t => t.Text));
-
-        // Regex to find [[APPLICATION_ID]] pattern
-        var regex = new Regex(@"(\[\[.*?\]\])");
-        var matches = regex.Matches(fullText);
-
-        if (matches.Count == 0)
-        {
-            return false; // No pattern found in this cell
-        }
-
-        foreach (Match match in matches)
-        {
-            string fullApplicationId = match.Value;  // e.g., "[[APPLICATION_ID]]"
-            string applicationId = fullApplicationId.Substring(2, fullApplicationId.Length - 4);  // e.g., "APPLICATION_ID"
-
-            if (application.TryGetValue(applicationId, out ApplicationField? field))
-            {
-                if (field == null || field.Name == null)
-                    continue;
-
-                // Replace only the fields name text across Text elements
-                TemplateReplacer.ReplaceAcrossRuns(texts, match.Index, match.Length, field.Name);
-                return true;  // one pattern replaced
-            }
-        }
-        return false;  // no pattern replaced
-    }
-
-    public static void MergeDataSet(Body docxBody, string yamlFilePath, string applicationFieldsFilePath)
+    public static void MergeDataSet(Body docxBody, string yamlFilePath, List<DataCollection.Domain> domainList)
     {
         List<YamlEntry> dataSet = DataCollection.DeserializeYAML<YamlEntry>(yamlFilePath);
 
-        var applicationFieldsList = DataCollection.DeserializeYAML<ApplicationField>(applicationFieldsFilePath);
-        Dictionary<string, ApplicationField> applicationDictionary = applicationFieldsList
+        Dictionary<string, DataCollection.Domain> domainDictionary = domainList
             .Where(field => field.Id != null)
             .ToDictionary(field => field.Id!, field => field);
 
-        ReplaceWordTemplate(docxBody, dataSet, applicationDictionary);
+        ReplaceWordTemplate(docxBody, dataSet, domainDictionary);
     }
 
 }
