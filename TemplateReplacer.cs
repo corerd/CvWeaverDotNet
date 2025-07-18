@@ -1,10 +1,131 @@
-using DocumentFormat.OpenXml.Wordprocessing;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 public static class TemplateReplacer
 {
+    public static void ReplaceHyperlinkTag(
+        Body ancestorBody,
+        List<Paragraph> paragraphList,
+        Dictionary<string, DataCollection.HyperlinkDesc> hyperlinkDictionary)
+    {
+        // Define a tag pattern as ((abbreviation))
+        const string tagPattern = @"\(\([^)]+\)\)";
+
+        // Add hyperlink relationship to the main document part
+        var mainPart = ancestorBody?.Ancestors<Document>().FirstOrDefault()?.MainDocumentPart;
+        if (mainPart == null)
+            return;  // no Main Part
+
+        foreach (var para in paragraphList)
+        {
+            var runs = para.Descendants<Run>()
+                //.Where(r => r.InnerText.Contains(textToReplace))
+                .Where(r => Regex.IsMatch(r.InnerText, tagPattern))
+                .ToList();
+
+            foreach (var run in runs)
+            {
+                var runText = run.GetFirstChild<Text>();
+                if (runText == null) continue;
+
+                string fullText = runText.Text;
+
+                // Find all matches of tagPattern in the run's text
+                var matches = Regex.Matches(fullText, "(" + tagPattern + ")");
+                if (matches.Count == 0) continue;
+
+                int lastIndex = 0;
+                List<OpenXmlElement> newElements = new List<OpenXmlElement>();
+
+                foreach (Match match in matches)
+                {
+                    string tagKey = match.Groups[1].Value;
+                    if (!hyperlinkDictionary.TryGetValue(tagKey, out var hyperlinkDesc))
+                        continue;
+
+                    string hyperlinkText = hyperlinkDesc.Name ?? string.Empty;
+                    string hyperlinkUrl = hyperlinkDesc.Link ?? string.Empty;
+
+                    // Add text before the match
+                    if (match.Index > lastIndex)
+                    {
+                        string beforeText = fullText.Substring(lastIndex, match.Index - lastIndex);
+                        if (!string.IsNullOrEmpty(beforeText))
+                        {
+                            Run beforeRun = run.RunProperties != null
+                                ? new Run(run.RunProperties.CloneNode(true))
+                                : new Run();
+                            beforeRun.AppendChild(new Text(beforeText) { Space = SpaceProcessingModeValues.Preserve });
+                            newElements.Add(beforeRun);
+                        }
+                    }
+
+                    // Ensure the URL is absolute; if not, prepend the base URL
+                    Uri? hyperlinkUri;
+                    if (!Uri.TryCreate(hyperlinkUrl, UriKind.Absolute, out hyperlinkUri))
+                    {
+                        // URL is not absolute
+                        // then combine with base URL
+                        hyperlinkUri = new Uri(new Uri(DataStore.HyperlinkBaseUrl), hyperlinkUrl);
+                    }
+
+                    // Add hyperlink relationship
+                    var hyperlinkRel = mainPart.AddHyperlinkRelationship(
+                        hyperlinkUri,
+                        true);
+
+                    // Create hyperlink element
+                    Hyperlink hyperlink = new Hyperlink()
+                    {
+                        History = OnOffValue.FromBoolean(true),
+                        Id = hyperlinkRel.Id
+                    };
+
+                    Run hyperlinkTextRun = run.RunProperties != null
+                        ? new Run(run.RunProperties.CloneNode(true))
+                        : new Run();
+                    hyperlinkTextRun.AppendChild(new Text(hyperlinkText) { Space = SpaceProcessingModeValues.Preserve });
+
+                    hyperlink.AppendChild(hyperlinkTextRun);
+                    newElements.Add(hyperlink);
+
+                    lastIndex = match.Index + match.Length;
+                }
+
+                // Add text after the last match
+                if (lastIndex < fullText.Length)
+                {
+                    string afterText = fullText.Substring(lastIndex);
+                    if (!string.IsNullOrEmpty(afterText))
+                    {
+                        Run afterRun = run.RunProperties != null
+                            ? new Run(run.RunProperties.CloneNode(true))
+                            : new Run();
+                        afterRun.AppendChild(new Text(afterText) { Space = SpaceProcessingModeValues.Preserve });
+                        newElements.Add(afterRun);
+                    }
+                }
+
+                // Replace the original run with the new elements
+                if (run.Parent != null && newElements.Count > 0)
+                {
+                    run.Parent.InsertBefore(newElements.First(), run);
+                    foreach (var elem in newElements.Skip(1))
+                    {
+                        run.Parent.InsertAfter(elem, newElements.First());
+                        newElements[0] = elem;
+                    }
+                    run.Remove();
+                }
+            }
+
+        }
+
+    }
+
     /// <summary>
     /// Replaces text patterns like "*{{placeholder}}*" in a single MS Word table cell.
     /// Word documents often split text across multiple Run and Text elements due to formatting, spellcheck, or editing.

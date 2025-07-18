@@ -15,6 +15,13 @@ public class DataCollection
         public string? Desc { get; set; }
     }
 
+    public class HyperlinkDesc
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Link { get; set; }
+    }
+
     public static (Table? FoundTable, OpenXmlElement? Parent, int Index) ExtractTableAtPlaceholder(Body docxBody, string firstCellPlaceholder)
     {
         // Find the original table by matching the content of cell (0,0)

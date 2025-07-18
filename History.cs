@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Wordprocessing;
 
 public class History
@@ -33,17 +32,11 @@ public class History
         };
     }
 
-    private class ApplicationField
-    {
-        public string? Id { get; set; }
-        public string? Name { get; set; }
-        public string? Desc { get; set; }
-    }
-
     private static void ReplaceWordTemplate(
         Body docxBody,
         List<YamlEntry> dataList,
-        Dictionary<string, DataCollection.Domain> domainDictionary)
+        Dictionary<string, DataCollection.Domain> domainDictionary,
+        Dictionary<string, DataCollection.HyperlinkDesc> hyperlinkDictionary)
     {
         // Get the table placeholder from Year property
         PlaceholderYamlPropertyMap.PropertyToTable.TryGetValue(nameof(YamlEntry.Year), out string? tblCellMatchText);
@@ -77,6 +70,17 @@ public class History
                 }
             }
 
+            // Replace hyperlink tags in cell 1 at row 0 of newTable
+            var selectedRow = newTable.Elements<TableRow>().ElementAtOrDefault(0);
+            var selectedCell = selectedRow?.Elements<TableCell>().ElementAtOrDefault(1);
+            if (selectedCell != null)
+            {
+                TemplateReplacer.ReplaceHyperlinkTag(
+                    docxBody,
+                    selectedCell.Elements<Paragraph>().ToList(),
+                    hyperlinkDictionary);
+            }
+
             tablesToInsert.Add(newTable);
         }
 
@@ -91,15 +95,20 @@ public class History
         }
     }
 
-    public static void MergeDataSet(Body docxBody, string yamlFilePath, List<DataCollection.Domain> domainList)
+    public static void MergeDataSet(Body docxBody, string yamlFilePath, string yamlFilePathHyperlinkDesc, List<DataCollection.Domain> domainList)
     {
         List<YamlEntry> dataSet = DataCollection.DeserializeYAML<YamlEntry>(yamlFilePath);
+
+        List<DataCollection.HyperlinkDesc> hyperlinkList = DataCollection.DeserializeYAML<DataCollection.HyperlinkDesc>(yamlFilePathHyperlinkDesc);
+        Dictionary<string, DataCollection.HyperlinkDesc> hyperlinkDictionary = hyperlinkList
+            .Where(field => field.Id != null)
+            .ToDictionary(field => field.Id!, field => field);
 
         Dictionary<string, DataCollection.Domain> domainDictionary = domainList
             .Where(field => field.Id != null)
             .ToDictionary(field => field.Id!, field => field);
 
-        ReplaceWordTemplate(docxBody, dataSet, domainDictionary);
+        ReplaceWordTemplate(docxBody, dataSet, domainDictionary, hyperlinkDictionary);
     }
 
 }
