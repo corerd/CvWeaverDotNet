@@ -77,6 +77,21 @@ public static class TemplateReplacer
                         hyperlinkUri,
                         true);
 
+                    // Create new RunProperties for hyperlink with custom style
+                    RunProperties hyperlinkRunProperties = new RunProperties();
+
+                    // Set custom color (e.g., blue)
+                    Color color = new Color() { Val = "0000FF" };  // Hex RGB for blue
+                    hyperlinkRunProperties.Append(color);
+
+                    // Set underline (single)
+                    Underline underline = new Underline() { Val = UnderlineValues.Single };
+                    hyperlinkRunProperties.Append(underline);
+
+                    // Optionally set font size (half-point, e.g., 24=12pt)
+                    // FontSize fontSize = new FontSize() { Val = "24" };
+                    // hyperlinkRunProperties.Append(fontSize);
+
                     // Create hyperlink element
                     Hyperlink hyperlink = new Hyperlink()
                     {
@@ -84,10 +99,10 @@ public static class TemplateReplacer
                         Id = hyperlinkRel.Id
                     };
 
-                    Run hyperlinkTextRun = run.RunProperties != null
-                        ? new Run(run.RunProperties.CloneNode(true))
-                        : new Run();
-                    hyperlinkTextRun.AppendChild(new Text(hyperlinkText) { Space = SpaceProcessingModeValues.Preserve });
+                    // Create the run inside the hyperlink with custom properties and text
+                    Run hyperlinkTextRun = new Run();
+                    hyperlinkTextRun.Append(hyperlinkRunProperties);
+                    hyperlinkTextRun.Append(new Text(hyperlinkText) { Space = SpaceProcessingModeValues.Preserve });
 
                     hyperlink.AppendChild(hyperlinkTextRun);
                     newElements.Add(hyperlink);
